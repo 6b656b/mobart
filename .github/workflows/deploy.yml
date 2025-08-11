@@ -1,0 +1,61 @@
+name: Deploy Mobart to EC2
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: SSH into EC2 and Deploy Mobart
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.EC2_IP_ADDRESS }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script: |  
+            cd ~/mobart
+            git pull origin main
+            
+            # Create .env file from GitHub Secrets for mobart
+            cat > /home/ec2-user/mobart/.env <<EOF
+            # Redis Configuration (connects to Go backend's Redis)
+            REDIS_HOST=${{ secrets.REDIS_HOST }}
+            REDIS_PORT=${{ secrets.REDIS_PORT }}
+            REDIS_USERNAME=${{ secrets.REDIS_USERNAME }}
+            REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+            GENERATION_REQUEST_CHANNEL=${{ secrets.GENERATION_REQUEST_CHANNEL }}
+            COMPLETION_CHANNEL=${{ secrets.COMPLETION_CHANNEL }}
+
+            # AWS S3 Configuration
+            AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            AWS_DEFAULT_REGION=${{ secrets.AWS_DEFAULT_REGION }}
+            S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}
+
+            # Go Backend Configuration
+            GO_BACKEND_URL=${{ secrets.GO_BACKEND_URL }}
+
+            # Image Generation APIs
+            IMAGE_PROVIDER=${{ secrets.IMAGE_PROVIDER }}
+            STABILITY_AI_API_KEY=${{ secrets.STABILITY_AI_API_KEY }}
+
+            # Logging
+            LOG_LEVEL=${{ secrets.LOG_LEVEL }}
+            EOF
+
+            echo "Environment file created successfully"
+            cat .env
+
+            # Stop and restart the mobart worker
+            docker-compose down
+            docker-compose up --build -d
+
+            echo "Mobart deployment completed successfully!"
